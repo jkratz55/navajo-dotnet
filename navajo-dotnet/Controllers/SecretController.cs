@@ -23,10 +23,20 @@ public class SecretController : ControllerBase
         _dbContext = dbContext;
     }
     
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="req"></param>
+    /// <returns></returns>
     [HttpPost]
     [ProducesResponseType(typeof(CreateSecretResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> Post([FromBody] CreateSecretRequest req)
     {
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(ModelState);
+        }
+        
         var (encrypted, iv) = _encryptionService.Encrypt(req.Value);
         Secret secret = new Secret(encrypted, iv);
         
@@ -35,13 +45,18 @@ public class SecretController : ControllerBase
 
         var resp = new CreateSecretResponse
         {
-            Link = $"/secrets/{secret.Id}",
+            Link = $"{Request.Scheme}://{Request.Host}/secret/{secret.Id}",
             ExpiresAt = secret.ExpiresAt
         };
         
         return Created(new Uri($"{Request.Scheme}://{Request.Host}/secret/{secret.Id}"), resp);
     }
 
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="id"></param>
+    /// <returns></returns>
     [HttpGet("{id}")]
     [ProducesResponseType(typeof(RetrieveSecretResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

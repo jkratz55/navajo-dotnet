@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using HealthChecks.NpgSql;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using navajo_dotnet.Data;
+using navajo_dotnet.Health;
 using navajo_dotnet.Service;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
@@ -9,16 +13,30 @@ using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// If running in development mode, load user secrets
 if (builder.Environment.IsDevelopment()) {
     builder.Configuration.AddUserSecrets<Program>();   
 }
 
+// Configure core .NET WebAPI components
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// Configure entity framework and DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Configure dependency injection
 builder.Services.AddSingleton<IEncryptionService, AesEncryptionService>();
+
+// Configure health checks
+builder.Services.AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy())
+    .AddNpgSql(
+        builder.Configuration["ConnectionStrings:DefaultConnection"]!,
+        name: "database",
+        tags: new[] { "db", "sql", "postgresql" });
 
 // Add OpenTelemetry
 builder.Services.AddOpenTelemetry()
@@ -65,9 +83,22 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+// Setup WebAPI configuration and components including Prometheus scraping endpoint
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
 app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
+
+// Register health check endpoints
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = _ => true,
+    ResponseWriter = HealthCheckResponseWriter.WriteResponse
+});
 
 app.Run();
