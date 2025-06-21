@@ -4,6 +4,7 @@ using HealthChecks.NpgSql;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using navajo_dotnet.Data;
 using navajo_dotnet.Health;
+using navajo_dotnet.Middleware;
 using navajo_dotnet.Service;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
@@ -85,7 +86,9 @@ if (app.Environment.IsDevelopment())
 
 // Setup WebAPI configuration and components including Prometheus scraping endpoint
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseHttpsRedirection();
+app.UseMiddleware<TraceIDMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
