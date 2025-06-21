@@ -2,11 +2,10 @@ using System.Text.Json.Serialization;
 
 namespace navajo_dotnet.Models;
 
-public record CreateSecretResponse
-{
-    [JsonPropertyName("link")]
-    public required string Link { init; get; }
-    
-    [JsonPropertyName("expiresAt")]
-    public required DateTimeOffset ExpiresAt { init; get; }
-}
+public record CreateSecretResponse(
+    [property: JsonPropertyName("link")] 
+    string Link,
+
+    [property: JsonPropertyName("expiresAt")]
+    DateTimeOffset ExpiresAt
+);

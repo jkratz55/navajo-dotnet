@@ -44,11 +44,10 @@ public class SecretController : ControllerBase
         _dbContext.Secrets.Add(secret);
         await _dbContext.SaveChangesAsync();
 
-        var resp = new CreateSecretResponse
-        {
-            Link = $"{Request.Scheme}://{Request.Host}/secret/{secret.Id}",
-            ExpiresAt = secret.ExpiresAt
-        };
+        var resp = new CreateSecretResponse(
+            Link: $"{Request.Scheme}://{Request.Host}/secret/{secret.Id}",
+            ExpiresAt: secret.ExpiresAt
+        );
         
         return Created(new Uri($"{Request.Scheme}://{Request.Host}/secret/{secret.Id}"), resp);
     }
@@ -102,8 +101,8 @@ public class SecretController : ControllerBase
         var decryptedValue = _encryptionService.Decrypt(value, nonce);
 
         return Ok(new RetrieveSecretResponse
-        {
-            Value = decryptedValue
-        });
+        (
+            Value: decryptedValue
+        ));
     }
 }

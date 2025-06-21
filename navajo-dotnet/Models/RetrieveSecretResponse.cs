@@ -2,8 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace navajo_dotnet.Models;
 
-public record RetrieveSecretResponse
-{
-    [JsonPropertyName("value")]
-    public required string Value { get; init; }
-}
+public record RetrieveSecretResponse(
+    [property: JsonPropertyName("value")]
+    string Value
+);

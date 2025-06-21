@@ -7,6 +7,7 @@ using navajo_dotnet.Controllers;
 using navajo_dotnet.Data;
 using navajo_dotnet.Service;
 using Moq;
+using navajo_dotnet.Domain;
 using Xunit;
 using navajo_dotnet.Models;
 
@@ -18,44 +19,27 @@ public class SecretControllerTests
     
     private readonly Mock<ILogger<SecretController>> _loggerMock;
     private readonly Mock<IEncryptionService> _encryptionServiceMock;
-    private readonly SecretController _controller;
+    private readonly DbContextOptions<AppDbContext> _contextOptions;
 
     public SecretControllerTests()
     {
         _loggerMock = new Mock<ILogger<SecretController>>();
         _encryptionServiceMock = new Mock<IEncryptionService>();
         
-        var options = new DbContextOptionsBuilder<AppDbContext>()
+        _contextOptions = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
             .Options;
-        
-        var dbContext = new AppDbContext(options);
-
-        
-        _controller = new SecretController(
-            _loggerMock.Object,
-            _encryptionServiceMock.Object,
-            dbContext);
-        
-        var httpContext = new DefaultHttpContext();
-        httpContext.Request.Scheme = "https";
-        httpContext.Request.Host = new HostString("navajo.com");
-
-        // Assign the HttpContext to the controller
-        _controller.ControllerContext = new ControllerContext()
-        {
-            HttpContext = httpContext
-        };
     }
 
     [Fact]
     public async Task Post_CreateSecret_ReturnsCreated()
     {
-        var request = new CreateSecretRequest { Value = "test-secret" };
+        var request = new CreateSecretRequest ( Value: "test-secret" );
         _encryptionServiceMock.Setup(x => x.Encrypt(It.IsAny<string>()))
             .Returns(("encrypted", "iv"));
         
-        IActionResult result = await _controller.Post(request);
+        SecretController controller = CreateController();
+        IActionResult result = await controller.Post(request);
         CreatedResult createdResult = Assert.IsType<CreatedResult>(result);
         CreateSecretResponse response = Assert.IsType<CreateSecretResponse>(createdResult.Value);
         
@@ -76,10 +60,12 @@ public class SecretControllerTests
     [Fact]
     public async Task Post_CreateSecret_InvalidRequest_ReturnsBadRequest()
     {
-        var request = new CreateSecretRequest { Value = "" };
-        _controller.ModelState.AddModelError("Value", "Value is required");
+        var request = new CreateSecretRequest(Value: String.Empty);
         
-        IActionResult result = await _controller.Post(request);
+        SecretController controller = CreateController();
+        controller.ModelState.AddModelError("Value", "Value is required");
+        
+        IActionResult result = await controller.Post(request);
         
         BadRequestObjectResult badRequestResult = Assert.IsType<BadRequestObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, badRequestResult.StatusCode);
@@ -88,24 +74,123 @@ public class SecretControllerTests
     [Fact]
     public async Task Get_GetSecret_ReturnsOk()
     {
-        throw new NotImplementedException();
+        // Setup data in database
+        using var dbContext = new AppDbContext(_contextOptions);
+        var secret = new Secret("encrypted-value", "iv-value");
+        dbContext.Secrets.Add(secret);
+        await dbContext.SaveChangesAsync();
+
+        // Configure mocks
+        _encryptionServiceMock.Setup(x => x.Decrypt(
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .Returns("decrypted-secret");
+
+        // Execute the controller method
+        var controller = CreateController();
+        var result = await controller.Get(secret.Id);
+
+        // Assert
+        var okResult = Assert.IsType<OkObjectResult>(result);
+        var response = Assert.IsType<RetrieveSecretResponse>(okResult.Value);
+        Assert.Equal("decrypted-secret", response.Value);
     }
     
     [Fact]
     public async Task Get_GetSecret_InvalidId_ReturnsNotFound()
     {
-        throw new NotImplementedException();
+        Guid randomId = Guid.NewGuid();
+        
+        // Configure mocks
+        _encryptionServiceMock.Setup(x => x.Decrypt(
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .Returns("decrypted-secret");
+        
+        // Execute the controller method
+        var controller = CreateController();
+        var result = await controller.Get(randomId);
+        
+        // Assert
+        var resultObject = Assert.IsType<ObjectResult>(result);
+        var response = Assert.IsType<ProblemDetails>(resultObject.Value);
+        Assert.Equal(StatusCodes.Status404NotFound, resultObject.StatusCode);
     }
     
     [Fact]
     public async Task Get_GetSecret_ExpiredSecret_ReturnsGone()
     {
-        throw new NotImplementedException();
+        Guid randomId = Guid.NewGuid();
+        
+        using var dbContext = new AppDbContext(_contextOptions);
+        var secret = new Secret("expired-encrypted-value", "expired-iv-value")
+        {
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+            Id = randomId
+        };
+        dbContext.Secrets.Add(secret);
+        await dbContext.SaveChangesAsync();
+        
+        // Configure mocks
+        _encryptionServiceMock.Setup(x => x.Decrypt(
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .Returns("decrypted-secret");
+        
+        // Execute the controller method
+        var controller = CreateController();
+        var result = await controller.Get(randomId);
+        
+        var resultObject = Assert.IsType<ObjectResult>(result);
+        var response = Assert.IsType<ProblemDetails>(resultObject.Value);
+        Assert.Equal(StatusCodes.Status410Gone, resultObject.StatusCode);
     }
     
     [Fact]
     public async Task Get_GetSecret_ClaimedSecret_ReturnsConflict()
     {
-        throw new NotImplementedException();
+        // Setup data in database
+        using var dbContext = new AppDbContext(_contextOptions);
+        var secret = new Secret("encrypted-value", "iv-value");
+        secret.MarkAsClaimed();
+        dbContext.Secrets.Add(secret);
+        await dbContext.SaveChangesAsync();
+        
+        // Configure mocks
+        _encryptionServiceMock.Setup(x => x.Decrypt(
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .Returns("decrypted-secret");
+
+        // Execute the controller method
+        var controller = CreateController();
+        var result = await controller.Get(secret.Id);
+
+        // Assert
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        var response = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(StatusCodes.Status409Conflict, objectResult.StatusCode);
+    }
+    
+    private SecretController CreateController()
+    {
+        var dbContext = new AppDbContext(_contextOptions);
+        
+        SecretController controller = new SecretController(
+            _loggerMock.Object,
+            _encryptionServiceMock.Object,
+            dbContext);
+        
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Scheme = "https";
+        httpContext.Request.Host = new HostString("navajo.com");
+
+        // Assign the HttpContext to the controller
+        controller.ControllerContext = new ControllerContext()
+        {
+            HttpContext = httpContext
+        };
+
+        return controller;
     }
 }
