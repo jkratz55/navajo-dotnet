@@ -9,20 +9,18 @@ public static class HealthCheckResponseWriter
     {
         context.Response.ContentType = "application/json";
         
-        var response = new HealthResponse
-        {
-            Status = result.Status.ToString(),
-            Checks = result.Entries.Select(entry => new HealthCheckItem
-            {
-                Name = entry.Key,
-                Status = entry.Value.Status.ToString(),
-                Description = entry.Value.Description,
-                Duration = FormatDuration(entry.Value.Duration),
-                Data = entry.Value.Data
-            }),
-            Duration = FormatDuration(result.TotalDuration),
-            Timestamp = DateTimeOffset.UtcNow
-        };
+        var response = new HealthResponse(
+            Status: result.Status.ToString(),
+            Checks: result.Entries.Select(entry => new HealthCheckItem(
+                Name: entry.Key,
+                Status: entry.Value.Status.ToString(),
+                Description: entry.Value.Description,
+                Duration: FormatDuration(entry.Value.Duration),
+                Data: entry.Value.Data
+            )),
+            Duration: FormatDuration(result.TotalDuration),
+            Timestamp: DateTimeOffset.UtcNow
+        );
 
         return context.Response.WriteAsync(JsonSerializer.Serialize(response));
     }

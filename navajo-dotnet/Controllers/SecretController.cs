@@ -30,6 +30,7 @@ public class SecretController : ControllerBase
     /// <returns></returns>
     [HttpPost]
     [ProducesResponseType(typeof(CreateSecretResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Post([FromBody] CreateSecretRequest req)
     {
         if (!ModelState.IsValid)
